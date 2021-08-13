@@ -30,20 +30,21 @@ def process_file(filename):
     rendered = RenderableMermaidBlockRendererMixin.template.format(
         input_mermaid=mermaid_src, image_link=img
     )
-    mermaid_start = new_file.find(RenderableMermaidBlock.CODE_START_TOKEN)
-    start, end = (
-        new_file[0:mermaid_start],
-        new_file[
-            mermaid_start
-            + len(mermaid_src)
-            + len(
-                RenderableMermaidBlock.CODE_START_TOKEN
-                + RenderableMermaidBlock.CODE_END_TOKEN
-            )
-            + 5 :
-        ],
-    )
-    new_file = start + rendered + end
+    if rendered not in new_file:
+        mermaid_start = new_file.find(RenderableMermaidBlock.CODE_START_TOKEN)
+        start, end = (
+            new_file[0:mermaid_start],
+            new_file[
+                mermaid_start
+                + len(mermaid_src)
+                + len(
+                    RenderableMermaidBlock.CODE_START_TOKEN
+                    + RenderableMermaidBlock.CODE_END_TOKEN
+                )
+                + 5 :
+            ],
+        )
+        new_file = start + rendered + end
     if new_file != fpath:
         print("Updated... ", end="")
         fpath.write_text(new_file)
