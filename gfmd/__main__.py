@@ -1,25 +1,52 @@
 #!/usr/local/bin/python3.8
 import argparse
-from pathlib import Path
 import time
+from pathlib import Path
 
 import marko
+from marko.helpers import Source
 from marko.md_renderer import MarkdownRenderer
-from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
-from .elements import RenderableMermaid
+from gfmd.elements import (
+    RenderableMermaid,
+    RenderableMermaidBlock,
+    RenderableMermaidBlockRendererMixin,
+)
 
-markdown_parser = marko.Markdown(renderer=MarkdownRenderer, extensions=[RenderableMermaid])
+markdown_parser = marko.Markdown(
+    renderer=MarkdownRenderer, extensions=[RenderableMermaid]
+)
+
 
 def process_file(filename):
     print(f"Processing {filename}... ", end="")
-    file = Path(filename)
-    new_file = markdown_parser.convert(file.read_text())
-
-    if new_file != file:
+    fpath = Path(filename)
+    new_file = markdown_parser.convert(fpath.read_text())
+    # FIXME: This is wrong, it is what it is.
+    mermaid_src = RenderableMermaidBlock(new_file).parse(Source(new_file))
+    img = RenderableMermaidBlockRendererMixin().make_kroki_image_link(mermaid_src)
+    rendered = RenderableMermaidBlockRendererMixin.template.format(
+        input_mermaid=mermaid_src, image_link=img
+    )
+    mermaid_start = new_file.find(RenderableMermaidBlock.CODE_START_TOKEN)
+    start, end = (
+        new_file[0:mermaid_start],
+        new_file[
+            mermaid_start
+            + len(mermaid_src)
+            + len(
+                RenderableMermaidBlock.CODE_START_TOKEN
+                + RenderableMermaidBlock.CODE_END_TOKEN
+            )
+            + 5 :
+        ],
+    )
+    new_file = start + rendered + end
+    if new_file != fpath:
         print("Updated... ", end="")
-        file.write_text(new_file)
+        fpath.write_text(new_file)
     else:
         print("Skipped... ", end="")
     print("Done.")
@@ -29,8 +56,8 @@ class RerenderEventHandler(FileSystemEventHandler):
     """Watchdog handler to re-render when we see a change which GFMD can process."""
 
     def __init__(self):
-        self.debounce_interval = 1 # seconds
-        self.debounce_list = {} # path -> seen time
+        self.debounce_interval = 1  # seconds
+        self.debounce_list = {}  # path -> seen time
 
     def debounce_allow(self, event):
         """Return True if the event is allowed.
@@ -41,12 +68,14 @@ class RerenderEventHandler(FileSystemEventHandler):
         current_time = time.monotonic()
 
         if event.src_path in self.debounce_list:
-            if current_time < self.debounce_list[event.src_path] + self.debounce_interval:
+            if (
+                current_time
+                < self.debounce_list[event.src_path] + self.debounce_interval
+            ):
                 return False
 
         self.debounce_list[event.src_path] = current_time
         return True
-
 
     def render(self, event):
         if event.is_directory:
@@ -62,6 +91,7 @@ class RerenderEventHandler(FileSystemEventHandler):
 
     def on_modified(self, event):
         self.render(event)
+
 
 def watch(folders):
     event_handler = RerenderEventHandler()
@@ -98,7 +128,7 @@ def run():
         "-w",
         "--watch",
         action='store_true',
-        help="Watch for changes and re-run on changes."
+        help="Watch for changes and re-run on changes.",
     )
     args = parser.parse_args()
     files = args.files
